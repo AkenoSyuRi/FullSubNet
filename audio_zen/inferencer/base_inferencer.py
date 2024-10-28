@@ -27,11 +27,10 @@ class BaseInferencer:
         self.model, epoch = self._load_model(config["model"], checkpoint_path, self.device)
         self.inference_config = config["inferencer"]
 
-        self.enhanced_dir = root_dir / f"enhanced_{str(epoch).zfill(4)}"
-        self.noisy_dir = root_dir / f"noisy"
+        # self.enhanced_dir = root_dir / f"enhanced_{str(epoch).zfill(4)}"
 
-        # self.enhanced_dir = root_dir
-        prepare_empty_dir([self.noisy_dir, self.enhanced_dir])
+        self.enhanced_dir = root_dir
+        prepare_empty_dir([self.enhanced_dir])
 
         # Acoustics
         self.acoustic_config = config["acoustics"]
@@ -170,32 +169,34 @@ class BaseInferencer:
 
         inference_args = self.inference_config["args"]
 
-        for noisy, name in tqdm(self.dataloader, desc="Inference"):
-            assert len(name) == 1, "The batch size of inference stage must 1."
-            name = name[0]
+        for noisy, base_dir, path in tqdm(self.dataloader, desc="Inference"):
+            assert len(path) == 1, "The batch size of inference stage must 1."
+            base_dir = base_dir[0]
+            path = path[0]
 
             enhanced = getattr(self, inference_type)(noisy.to(self.device), inference_args)
 
             if abs(enhanced).any() > 1:
-                print(f"Warning: enhanced is not in the range [-1, 1], {name}")
+                print(f"Warning: enhanced is not in the range [-1, 1], {path}")
 
             enhanced = acoustics.signal.highpass(enhanced, 100, self.acoustic_config["sr"], 8)
 
             amp = np.iinfo(np.int16).max
             enhanced = np.int16(0.8 * amp * enhanced / np.max(np.abs(enhanced)))
-            sf.write(
-                self.enhanced_dir / f"{name}.wav",
-                enhanced,
-                samplerate=self.acoustic_config["sr"],
-            )
 
-            noisy = noisy.detach().squeeze(0).numpy()
-            if np.ndim(noisy) > 1:
-                noisy = noisy[0, :]  # first channel
-            noisy = noisy[: enhanced.shape[-1]]
-            sf.write(
-                self.noisy_dir / f"{name}.wav", noisy, samplerate=self.acoustic_config["sr"]
-            )
+            save_path: Path = self.enhanced_dir / path[len(base_dir):].lstrip("\\/")
+            save_path = save_path.with_suffix(".wav")
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            sf.write(save_path, enhanced, samplerate=self.acoustic_config["sr"])
+
+            # noisy = noisy.detach().squeeze(0).numpy()
+            # if np.ndim(noisy) > 1:
+            #     noisy = noisy[0, :]  # first channel
+            # noisy = noisy[: enhanced.shape[-1]]
+            # sf.write(
+            #     self.noisy_dir / f"{path}.wav", noisy, samplerate=self.acoustic_config["sr"]
+            # )
 
 
 if __name__ == "__main__":
