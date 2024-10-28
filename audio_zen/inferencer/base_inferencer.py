@@ -1,6 +1,7 @@
 from functools import partial
 from pathlib import Path
 
+import acoustics.signal
 import librosa
 import numpy as np
 import soundfile as sf
@@ -177,6 +178,8 @@ class BaseInferencer:
 
             if abs(enhanced).any() > 1:
                 print(f"Warning: enhanced is not in the range [-1, 1], {name}")
+
+            enhanced = acoustics.signal.highpass(enhanced, 100, self.acoustic_config["sr"], 8)
 
             amp = np.iinfo(np.int16).max
             enhanced = np.int16(0.8 * amp * enhanced / np.max(np.abs(enhanced)))
